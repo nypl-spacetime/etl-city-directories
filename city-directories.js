@@ -9,6 +9,7 @@ const levenshtein = require('fast-levenshtein')
 const streetsDataset = 'nyc-streets'
 
 function transform (config, dirs, tools, callback) {
+  const cityDirectoryNdjson = path.join(__dirname, 'data', '1854-1855.ndjson')
   const streetsNdjson = path.join(dirs.getDir('nyc-streets', 'transform'), `${streetsDataset}.objects.ndjson`)
 
   let i = 0
@@ -31,7 +32,7 @@ function transform (config, dirs, tools, callback) {
         names.forEach((name) => this.add(name))
       })
 
-      H(fs.createReadStream(path.join(__dirname, 'data', 'stephen.ndjson')))
+      H(fs.createReadStream(cityDirectoryNdjson))
         .split()
         .compact()
         .map(JSON.parse)
