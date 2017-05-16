@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const got = require('got')
 const H = require('highland')
 const R = require('ramda')
 const normalizer = require('@spacetime/nyc-street-normalizer')
@@ -9,7 +10,8 @@ const levenshtein = require('fast-levenshtein')
 const streetsDataset = 'nyc-streets'
 
 function transform (config, dirs, tools, callback) {
-  const cityDirectoryNdjson = path.join(__dirname, 'data', '1854-1855.ndjson')
+  const volume = '1854-1855'
+  const cityDirectoryNdjson = 'http://spacetime-nypl-org.s3.amazonaws.com/city-directories/data/1854-1855.ndjson'
   const streetsNdjson = path.join(dirs.getDir('nyc-streets', 'transform'), `${streetsDataset}.objects.ndjson`)
 
   let i = 0
@@ -32,7 +34,7 @@ function transform (config, dirs, tools, callback) {
         names.forEach((name) => this.add(name))
       })
 
-      H(fs.createReadStream(cityDirectoryNdjson))
+      H(got.stream(cityDirectoryNdjson))
         .split()
         .compact()
         .map(JSON.parse)
@@ -89,7 +91,7 @@ function transform (config, dirs, tools, callback) {
             return {
               type: 'object',
               obj: {
-                id: location.ocr.id,
+                id: `${volume}.${location.ocr.id}`,
                 type: 'st:Person',
                 name: subject,
                 data: {
@@ -103,7 +105,7 @@ function transform (config, dirs, tools, callback) {
             return {
               type: 'log',
               obj: {
-                id: location.ocr.id,
+                id: `${volume}.${location.ocr.id}`,
                 foundStreet: false,
                 originalAddress: location.location.value,
                 subject,
@@ -122,7 +124,7 @@ function transform (config, dirs, tools, callback) {
     })
 }
 
-// ==================================== API ====================================
+// ==================================== Steps ====================================
 
 module.exports.steps = [
   transform
