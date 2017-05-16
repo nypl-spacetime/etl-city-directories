@@ -1,6 +1,6 @@
 {
   "name": "spacetime-etl-city-directories",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Converts City Directory OCR data to NYC Space/Time Directory data",
   "main": "city-directories.js",
   "devDependencies": {

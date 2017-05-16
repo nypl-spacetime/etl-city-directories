@@ -3,5 +3,8 @@
   "title": "NYC City Directories",
   "license": "CC0",
   "description": "City Directories",
-  "author": "Bert Spaan"
+  "author": "Bert Spaan",
+  "dependsOn": [
+    "nyc-streets.transform"
+  ]
 }
