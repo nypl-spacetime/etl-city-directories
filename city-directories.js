@@ -94,6 +94,8 @@ function transform (config, dirs, tools, callback) {
                 id: `${volume}.${location.ocr.id}`,
                 type: 'st:Person',
                 name: subject,
+                validSince: 1854,
+                validUntil: 1855,
                 data: {
                   address,
                   occupation,
