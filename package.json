@@ -18,11 +18,13 @@
   "author": "Bert Spaan",
   "license": "MIT",
   "dependencies": {
+    "@spacetime/city-directory-entry-parser": "github:nypl-spacetime/city-directory-entry-parser",
     "@spacetime/nyc-street-normalizer": "github:nypl-spacetime/nyc-street-normalizer",
     "fast-levenshtein": "^2.0.6",
-    "got": "^6.7.1",
-    "highland": "^2.10.5",
+    "got": "^7.1.0",
+    "highland": "^2.11.1",
+    "hocr-detect-columns": "github:nypl-spacetime/hocr-detect-columns",
     "lunr": "^2.0.3",
-    "ramda": "^0.23.0"
+    "ramda": "^0.24.1"
   }
 }
