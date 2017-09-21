@@ -1,6 +1,6 @@
 {
   "name": "spacetime-etl-city-directories",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Converts City Directory OCR data to NYC Space/Time Directory data",
   "main": "city-directories.js",
   "devDependencies": {
@@ -21,10 +21,11 @@
     "@spacetime/city-directory-entry-parser": "github:nypl-spacetime/city-directory-entry-parser",
     "@spacetime/nyc-street-normalizer": "github:nypl-spacetime/nyc-street-normalizer",
     "fast-levenshtein": "^2.0.6",
-    "got": "^7.1.0",
+    "gunzip-maybe": "^1.4.1",
     "highland": "^2.11.1",
     "hocr-detect-columns": "github:nypl-spacetime/hocr-detect-columns",
     "lunr": "^2.0.3",
-    "ramda": "^0.24.1"
+    "ramda": "^0.24.1",
+    "tar-stream": "^1.5.4"
   }
 }
