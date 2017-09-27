@@ -4,7 +4,5 @@
   "license": "CC0",
   "description": "City Directories",
   "author": "Bert Spaan",
-  "dependsOn": [
-    "nyc-streets.transform"
-  ]
+  "website": "https://github.com/nypl-spacetime/city-directories"
 }

@@ -6,16 +6,13 @@ const got = require('got')
 const tar = require('tar-stream')
 const gunzip = require('gunzip-maybe')
 
-const lunr = require('lunr')
-const levenshtein = require('fast-levenshtein')
-
 const detectColumns = require('hocr-detect-columns')
 const parser = require('@spacetime/city-directory-entry-parser')
-const normalizer = require('@spacetime/nyc-street-normalizer')
-
-const STREETS_DATASET = 'nyc-streets'
 
 const BASE_URL = 'https://s3.amazonaws.com/spacetime-nypl-org/city-directories/hocr/'
+
+const LOG_EVERY_PAGE = 100
+const LOG_EVERY_LINE = 10000
 
 const DIRECTORIES = [
   {
@@ -122,11 +119,21 @@ function download (config, dirs, tools, callback) {
 }
 
 function parse (config, dirs, tools, callback) {
+  let count = 1
+
   H(DIRECTORIES)
     .map(R.curry(readDirectory)(dirs.download))
     .sequence()
     .errors((err) => {
       console.error(err)
+    })
+    .map((page) => {
+      if (count % LOG_EVERY_PAGE === 0) {
+        console.log(`      Parsed ${count} pages`)
+      }
+
+      count += 1
+      return page
     })
     .filter((page) => page.pageNum >= page.directory.startPage && page.pageNum <= page.directory.endPage)
     .map((page) => {
@@ -167,83 +174,6 @@ function parse (config, dirs, tools, callback) {
     .on('finish', callback)
 }
 
-function indexStreets (dirs) {
-  const streetsNdjson = path.join(dirs.getDir('nyc-streets', 'transform'), `${STREETS_DATASET}.objects.ndjson`)
-
-  let i = 0
-  return new Promise((resolve, reject) => {
-    H(fs.createReadStream(streetsNdjson))
-      .split()
-      .compact()
-      .map(JSON.parse)
-      .map(R.prop('name'))
-      .uniq()
-      .map((name) => ({
-        id: i++,
-        name: normalizer(name)
-      }))
-      .stopOnError(reject)
-      .toArray((names) => {
-        const index = lunr(function () {
-          this.ref('id')
-          this.field('name')
-
-          names.forEach((name) => this.add(name))
-        })
-
-        resolve({
-          search: (str) => index.search(str).map((result) => names[result.ref])
-        })
-      })
-  })
-}
-
-function findAddress (streets, location) {
-  const match = /^([\d½]+) (.*)/i.exec(location.value)
-
-  if (!match) {
-    return
-  }
-
-  const number = match[1]
-  const street = match[2]
-
-  if (!street.length) {
-    return
-  }
-
-  const normalized = normalizer(street)
-
-  const editDistancePerWord = 2
-  const searchStr = normalized.split(' ')
-    .map((word) => {
-      if (word.length <= 3 || word.match(/^\d/)) {
-        return word
-      }
-
-      return `${word}~${editDistancePerWord}`
-    })
-    .join(' ')
-
-  const results = streets.search(searchStr)
-
-  const bestResults = results
-    .map((street) => Object.assign(street, {
-      distance: levenshtein.get(normalized, street.name)
-    }))
-    .sort((a, b) => a.distance - b.distance)
-    .filter((street) => street.distance <= 2)
-
-  if (bestResults.length) {
-    const address = `${number} ${bestResults[0].name}`
-
-    return {
-      matched: address,
-      ...location
-    }
-  }
-}
-
 function makeId (line) {
   const yearPart = Array.isArray(line.year) ? line.year.join('-') : line.year
   const bboxPart = line.bbox.join('-')
@@ -252,83 +182,81 @@ function makeId (line) {
 }
 
 function transform (config, dirs, tools, callback) {
-  indexStreets(dirs)
-    .then((streets) => new Promise((resolve, reject) => {
-      H(fs.createReadStream(path.join(dirs.previous, 'lines.ndjson')))
-        .split()
-        .compact()
-        .map(JSON.parse)
-        // TODO: log if filtered
-        .filter((line) => line.parsed && line.parsed.location && line.parsed.location.length)
-        .filter((line) => line.parsed && line.parsed.subject && line.parsed.subject.length)
-        .map((line) => {
-          const logs = []
+  let count = 1
 
-          const addresses = line.parsed.location
-            .map((location) => {
-              const address = findAddress(streets, location)
-              if (address) {
-                return address.matched
-              }
-            })
-            .filter(R.identity)
+  H(fs.createReadStream(path.join(dirs.previous, 'lines.ndjson')))
+    .split()
+    .compact()
+    .map(JSON.parse)
+    .map((line) => {
+      if (count % LOG_EVERY_LINE === 0) {
+        console.log(`      Transformed ${count} lines`)
+      }
 
-          if (!addresses.length) {
-            // TODO: log!
-            return
+      count += 1
+      return line
+    })
+    // TODO: log if filtered
+    .filter((line) => line.parsed && line.parsed.location && line.parsed.location.length)
+    .filter((line) => line.parsed && line.parsed.subject && line.parsed.subject.length)
+    .map((line) => {
+      const logs = []
+
+      const primarySubject = line.parsed.subject
+        .filter((subject) => subject.type === 'primary')[0]
+
+      if (!primarySubject) {
+        // TODO: log!
+        return
+      }
+
+      const addresses = line.parsed.location
+
+      if (!addresses || !addresses.length) {
+        // TODO: log!
+        return
+      }
+
+      // // TODO: something with otherSubjects
+      // const otherSubjects = line.parsed.subject
+      //   .filter((subject) => subject.type !== 'primary')
+
+      return [
+        {
+          type: 'object',
+          obj: {
+            id: makeId(line),
+            type: 'st:Person',
+            name: primarySubject.value,
+            validSince: Array.isArray(line.year) ? line.year[0] : line.year,
+            validUntil: Array.isArray(line.year) ? line.year[1] : line.year,
+            data: {
+              uuid: line.uuid,
+              pageNum: line.pageNum,
+              bbox: line.bbox,
+              text: line.text,
+              occupation: primarySubject.occupation,
+              addresses
+            }
           }
-
-          const primarySubject = line.parsed.subject
-            .filter((subject) => subject.type === 'primary')[0]
-
-          if (!primarySubject) {
-            // TODO: log!
-            return
+        },
+        ...logs.map((log) => ({
+          type: 'log',
+          obj: {
+            // line
+            // uud
+            // error
           }
-
-          // // TODO: something with otherSubjects
-          // const otherSubjects = line.parsed.subject
-          //   .filter((subject) => subject.type !== 'primary')
-
-          return [
-            {
-              type: 'object',
-              obj: {
-                id: makeId(line),
-                type: 'st:Person',
-                name: primarySubject.value,
-                validSince: Array.isArray(line.year) ? line.year[0] : line.year,
-                validUntil: Array.isArray(line.year) ? line.year[1] : line.year,
-                data: {
-                  uuid: line.uuid,
-                  pageNum: line.pageNum,
-                  bbox: line.bbox,
-                  text: line.text,
-                  occupation: primarySubject.occupation,
-                  addresses
-                }
-              }
-            },
-            ...logs.map((log) => ({
-              type: 'log',
-              obj: {
-                // line
-                // uud
-                // error
-              }
-            }))
-          ]
-        })
-        .compact()
-        .flatten()
-        .map(H.curry(tools.writer.writeObject))
-        .nfcall([])
-        .series()
-        .stopOnError(reject)
-        .done(resolve)
-    }))
-    .then(callback)
-    .catch(callback)
+        }))
+      ]
+    })
+    .compact()
+    .flatten()
+    .map(H.curry(tools.writer.writeObject))
+    .nfcall([])
+    .series()
+    .stopOnError(callback)
+    .done(callback)
 }
 
 // ==================================== Steps ====================================

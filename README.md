@@ -31,11 +31,18 @@
 <td>Author</td>
 <td>Bert Spaan</td>
 </tr>
+
+<tr>
+<td>Website</td>
+<td><a href="https://github.com/nypl-spacetime/city-directories">https://github.com/nypl-spacetime/city-directories</a></td>
+</tr>
 </tbody>
 </table>
 
 ## Available steps
 
+  - `download`
+  - `parse`
   - `transform`
 
 ## Usage
