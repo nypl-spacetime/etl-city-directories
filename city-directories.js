@@ -3,47 +3,18 @@ const path = require('path')
 const H = require('highland')
 const R = require('ramda')
 const got = require('got')
+const cheerio = require('cheerio')
 const tar = require('tar-stream')
 const gunzip = require('gunzip-maybe')
 
 const detectColumns = require('hocr-detect-columns')
 const parser = require('@spacetime/city-directory-entry-parser')
 
+const DIRECTORY_TABLE_URL = 'http://spacetime.nypl.org/city-directories/DIRECTORIES'
 const BASE_URL = 'https://s3.amazonaws.com/spacetime-nypl-org/city-directories/hocr/'
 
 const LOG_EVERY_PAGE = 100
 const LOG_EVERY_LINE = 10000
-
-const DIRECTORIES = [
-  {
-    uuid: '4adf9ec0-317a-0134-03ad-00505686a51c',
-    year: [1850, 1851],
-    startPage: 21,
-    endPage: 560,
-    columnCount: 2
-  },
-  {
-    uuid: '4afa0510-317a-0134-cf84-00505686a51c',
-    year: [1858, 1859],
-    startPage: 21,
-    endPage: 885,
-    columnCount: 2
-  },
-  {
-    uuid: '4b00bf60-317a-0134-32d0-00505686a51c',
-    year: [1860, 1861],
-    startPage: 21,
-    endPage: 946,
-    columnCount: 2
-  },
-  {
-    uuid: '4b51d420-317a-0134-aa50-00505686a51c',
-    year: [1877, 1878],
-    startPage: 17,
-    endPage: 1552,
-    columnCount: 2
-  }
-]
 
 function readDirectory (baseDir, directory) {
   const pagesStream = H()
@@ -95,33 +66,89 @@ function getFilename (uuid) {
   return `${uuid}.tar.gz`
 }
 
-function downloadFile (url, destination, callback) {
-  got.stream(url)
-    .on('error', callback)
-    .pipe(fs.createWriteStream(destination))
-    .on('finish', callback)
+function downloadDirectory (dirs, directory) {
+  const uuid = directory.uuid
+  const url = BASE_URL + getFilename(uuid)
+  const filename = path.join(dirs.current, getFilename(uuid))
+
+  return new Promise((resolve, reject) => {
+    let error = false
+
+    got.stream(url)
+      .on('error', (err) => {
+        console.log(`   Error downloading ${url}: ${err.message}`)
+        error = true
+      })
+      .pipe(fs.createWriteStream(filename))
+      .on('finish', () => {
+        console.log(`   Successfully downloaded ${url}`)
+
+        if (error) {
+          try {
+            const errorFilename = path.join(dirs.current, `${uuid}.xml`)
+            fs.renameSync(filename, errorFilename)
+
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        } else {
+          resolve()
+        }
+      })
+  })
+}
+
+function parseTable (html) {
+  const $ = cheerio.load(html)
+
+  const keys = $('table thead th').map((index, th) => $(th).text()).get()
+
+  const rows = $('table tbody tr').map((index, tr) => {
+    const values = $('td', tr).map((index, td) => $(td).text())
+      .get()
+      .map(R.trim)
+      .map((value) => value.length ? value : undefined)
+
+    const row = R.zipObj(keys, values)
+
+    const years = row.year.split('/')
+
+    return Object.assign(row, {
+      startPage: row.startPage && parseInt(row.startPage),
+      endPage: row.endPage && parseInt(row.endPage),
+      columnCount: row.columnCount && parseInt(row.columnCount),
+      year: years.length === 2 ? [parseInt(years[0]), parseInt(years[0]) + 1] : parseInt(row.year)
+    })
+  }).get()
+  .filter((row) => row.uuid && row.year && row.startPage && row.endPage && row.columnCount)
+
+  return rows
 }
 
 function download (config, dirs, tools, callback) {
-  H(DIRECTORIES)
-    .map(R.prop('uuid'))
-    .map((uuid) => {
-      const url = BASE_URL + getFilename(uuid)
-      const filename = path.join(dirs.current, getFilename(uuid))
-
-      console.log(`   Downloading ${url}`)
-      return R.curry(downloadFile)(url, filename)
+  got(DIRECTORY_TABLE_URL)
+    .then((response) => response.body)
+    .then(parseTable)
+    .then((directories) => {
+      fs.writeFileSync(path.join(dirs.current, 'directories.json'), JSON.stringify(directories, null, 2))
+      return directories
     })
-    .nfcall([])
-    .series()
-    .stopOnError(callback)
-    .done(callback)
+    .catch(callback)
+    .then((directories) => {
+      Promise.all(directories.map(R.curry(downloadDirectory)(dirs)))
+        .then(() => callback())
+        .catch(callback)
+    })
+
 }
 
 function parse (config, dirs, tools, callback) {
   let count = 1
+  const directories = require(path.join(dirs.download, 'directories.json'))
 
-  H(DIRECTORIES)
+  H(directories)
+    .filter((directory) => fs.existsSync(path.join(dirs.download, getFilename(directory.uuid))))
     .map(R.curry(readDirectory)(dirs.download))
     .sequence()
     .errors((err) => {
