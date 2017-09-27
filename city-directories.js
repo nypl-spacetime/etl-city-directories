@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const H = require('highland')
 const R = require('ramda')
+const got = require('got')
 const tar = require('tar-stream')
 const gunzip = require('gunzip-maybe')
 
@@ -14,13 +15,40 @@ const normalizer = require('@spacetime/nyc-street-normalizer')
 
 const STREETS_DATASET = 'nyc-streets'
 
-const BASE_DIR = '/Users/bertspaan/data/city-directories/hocr/'
+const BASE_URL = 'https://s3.amazonaws.com/spacetime-nypl-org/city-directories/hocr/'
 
-// function download (config, dirs, tools, callback) {
-//   callback()
-// }
+const DIRECTORIES = [
+  {
+    uuid: '4adf9ec0-317a-0134-03ad-00505686a51c',
+    year: [1850, 1851],
+    startPage: 21,
+    endPage: 560,
+    columnCount: 2
+  },
+  {
+    uuid: '4afa0510-317a-0134-cf84-00505686a51c',
+    year: [1858, 1859],
+    startPage: 21,
+    endPage: 885,
+    columnCount: 2
+  },
+  {
+    uuid: '4b00bf60-317a-0134-32d0-00505686a51c',
+    year: [1860, 1861],
+    startPage: 21,
+    endPage: 946,
+    columnCount: 2
+  },
+  {
+    uuid: '4b51d420-317a-0134-aa50-00505686a51c',
+    year: [1877, 1878],
+    startPage: 17,
+    endPage: 1552,
+    columnCount: 2
+  }
+]
 
-function readDirectory (directory) {
+function readDirectory (baseDir, directory) {
   const pagesStream = H()
 
   const extract = tar.extract()
@@ -57,7 +85,7 @@ function readDirectory (directory) {
     pagesStream.end()
   })
 
-  const tarGzFile = path.join(BASE_DIR, `${directory.uuid}.tar.gz`)
+  const tarGzFile = path.join(baseDir, getFilename(directory.uuid))
 
   fs.createReadStream(tarGzFile)
     .pipe(gunzip())
@@ -66,40 +94,36 @@ function readDirectory (directory) {
   return pagesStream
 }
 
-function parse (config, dirs, tools, callback) {
-  const directories = [
-    {
-      uuid: '4adf9ec0-317a-0134-03ad-00505686a51c',
-      year: [1850, 1851],
-      startPage: 21,
-      endPage: 560,
-      columnCount: 2
-    },
-    {
-      uuid: '4afa0510-317a-0134-cf84-00505686a51c',
-      year: [1858, 1859],
-      startPage: 21,
-      endPage: 885,
-      columnCount: 2
-    },
-    {
-      uuid: '4b00bf60-317a-0134-32d0-00505686a51c',
-      year: [1860, 1861],
-      startPage: 21,
-      endPage: 946,
-      columnCount: 2
-    },
-    {
-      uuid: '4b51d420-317a-0134-aa50-00505686a51c',
-      year: [1877, 1878],
-      startPage: 17,
-      endPage: 1552,
-      columnCount: 2
-    }
-  ]
+function getFilename (uuid) {
+  return `${uuid}.tar.gz`
+}
 
-  H(directories)
-    .map(readDirectory)
+function downloadFile (url, destination, callback) {
+  got.stream(url)
+    .on('error', callback)
+    .pipe(fs.createWriteStream(destination))
+    .on('finish', callback)
+}
+
+function download (config, dirs, tools, callback) {
+  H(DIRECTORIES)
+    .map(R.prop('uuid'))
+    .map((uuid) => {
+      const url = BASE_URL + getFilename(uuid)
+      const filename = path.join(dirs.current, getFilename(uuid))
+
+      console.log(`   Downloading ${url}`)
+      return R.curry(downloadFile)(url, filename)
+    })
+    .nfcall([])
+    .series()
+    .stopOnError(callback)
+    .done(callback)
+}
+
+function parse (config, dirs, tools, callback) {
+  H(DIRECTORIES)
+    .map(R.curry(readDirectory)(dirs.download))
     .sequence()
     .errors((err) => {
       console.error(err)
@@ -183,6 +207,10 @@ function findAddress (streets, location) {
 
   const number = match[1]
   const street = match[2]
+
+  if (!street.length) {
+    return
+  }
 
   const normalized = normalizer(street)
 
@@ -306,7 +334,7 @@ function transform (config, dirs, tools, callback) {
 // ==================================== Steps ====================================
 
 module.exports.steps = [
-  // download,
+  download,
   parse,
   transform
 ]
