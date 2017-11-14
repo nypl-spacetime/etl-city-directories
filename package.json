@@ -23,7 +23,6 @@
     "gunzip-maybe": "^1.4.1",
     "highland": "^2.11.1",
     "hocr-detect-columns": "github:nypl-spacetime/hocr-detect-columns",
-    "node-stream-zip": "^1.4.0",
     "ramda": "^0.25.0",
     "tar-stream": "^1.5.4"
   }
