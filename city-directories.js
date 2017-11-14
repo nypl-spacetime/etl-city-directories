@@ -8,20 +8,22 @@ const tar = require('tar-stream')
 const gunzip = require('gunzip-maybe')
 
 const detectColumns = require('hocr-detect-columns')
-const parser = require('@spacetime/city-directory-entry-parser')
-
-const DIRECTORY_TABLE_URL = 'http://spacetime.nypl.org/city-directories/DIRECTORIES'
-const BASE_URL = 'https://s3.amazonaws.com/spacetime-nypl-org/city-directories/hocr/'
+const EntryParser = require('./entry-parser')
 
 const LOG_EVERY_PAGE = 100
 const LOG_EVERY_LINE = 10000
 
-function readDirectory (baseDir, directory) {
+function readCityDirectory (baseDir, directory) {
   const pagesStream = H()
 
   const extract = tar.extract()
 
   extract.on('entry', (header, stream, next) => {
+    if (!header.name.endsWith('.hocr')) {
+      next()
+      return
+    }
+
     const fileParts = header.name.split('/')
     const nameParts = fileParts[fileParts.length - 1].split('.')
 
@@ -66,9 +68,9 @@ function getFilename (uuid) {
   return `${uuid}.tar.gz`
 }
 
-function downloadDirectory (dirs, directory) {
+function downloadCityDirectory (dirs, baseUrl, directory) {
   const uuid = directory.uuid
-  const url = BASE_URL + getFilename(uuid)
+  const url = baseUrl + getFilename(uuid)
   const filename = path.join(dirs.current, getFilename(uuid))
 
   return new Promise((resolve, reject) => {
@@ -81,8 +83,6 @@ function downloadDirectory (dirs, directory) {
       })
       .pipe(fs.createWriteStream(filename))
       .on('finish', () => {
-        console.log(`   Successfully downloaded ${url}`)
-
         if (error) {
           try {
             const errorFilename = path.join(dirs.current, `${uuid}.xml`)
@@ -93,6 +93,7 @@ function downloadDirectory (dirs, directory) {
             reject(err)
           }
         } else {
+          console.log(`   Successfully downloaded ${url}`)
           resolve()
         }
       })
@@ -127,7 +128,18 @@ function parseTable (html) {
 }
 
 function download (config, dirs, tools, callback) {
-  got(DIRECTORY_TABLE_URL)
+  // URL to Markdown table containing list of city directories
+  const tableUrl = config.tableUrl
+
+  // Base URL from where tar.gzipped city directories can be downloaded
+  const baseUrl = config.dataUrl
+
+  if (!tableUrl || !baseUrl) {
+    callback(new Error('Please set both baseUrl and tableUrl in the configuration file'))
+    return
+  }
+
+  got(tableUrl)
     .then((response) => response.body)
     .then(parseTable)
     .then((directories) => {
@@ -136,33 +148,59 @@ function download (config, dirs, tools, callback) {
     })
     .catch(callback)
     .then((directories) => {
-      Promise.all(directories.map(R.curry(downloadDirectory)(dirs)))
+      Promise.all(directories.map(R.curry(downloadCityDirectory)(dirs, baseUrl)))
         .then(() => callback())
         .catch(callback)
     })
-
 }
 
 function parse (config, dirs, tools, callback) {
+  // Path of city-directory-entry-parser
+  const parserPath = config.parser && config.parser.path
+
+  // Path of city-directory-entry-parser's training data
+  const parserTraining = config.parser && config.parser.training
+
+  if (!parserPath || !parserTraining) {
+    callback(new Error('Please set both parser.path and parser.training in the configuration file'))
+    return
+  }
+
   let count = 1
+  const countsPerYear = {}
+
   const directories = require(path.join(dirs.download, 'directories.json'))
 
   H(directories)
     .filter((directory) => fs.existsSync(path.join(dirs.download, getFilename(directory.uuid))))
-    .map(R.curry(readDirectory)(dirs.download))
+    .map(R.curry(readCityDirectory)(dirs.download))
     .sequence()
     .errors((err) => {
       console.error(err)
     })
+    .filter((page) => page.pageNum >= page.directory.startPage && page.pageNum <= page.directory.endPage)
     .map((page) => {
-      if (count % LOG_EVERY_PAGE === 0) {
-        console.log(`      Parsed ${count} pages`)
+      const year = page.directory.year
+
+      if (!countsPerYear[year]) {
+        countsPerYear[year] = 1
       }
 
+      if (count % LOG_EVERY_PAGE === 0) {
+        const countPerYear = countsPerYear[year]
+        const total = page.directory.endPage - page.directory.startPage
+        const percentage = Math.round((countPerYear / total) * 100)
+
+        const countStr = `Parsed ${count} pages`
+        const yearStr = `city directory: ${year}`
+        const pageStr = `page: ${countsPerYear[year]} (${percentage}%)`
+        console.log(`      ${countStr} - ${yearStr} - ${pageStr}`)
+      }
+
+      countsPerYear[year] += 1
       count += 1
       return page
     })
-    .filter((page) => page.pageNum >= page.directory.startPage && page.pageNum <= page.directory.endPage)
     .map((page) => {
       const detectedPages = detectColumns(page.hocr, {
         columnCount: page.directory.columnCount
@@ -173,6 +211,7 @@ function parse (config, dirs, tools, callback) {
         detected: detectedPages[0]
       }
     })
+    .filter((page) => page.detected)
     .map((page) => {
       return page.detected.lines
         .filter((line) => line.columnIndex !== undefined)
@@ -188,17 +227,19 @@ function parse (config, dirs, tools, callback) {
         }))
     })
     .flatten()
-    .map((line) => ({
-      ...line,
-      parsed: parser(line.text)
+    .through(EntryParser({
+      path: parserPath,
+      training: parserTraining
     }))
     .errors((err) => {
-      console.error(err.message)
+      console.error(err)
     })
     .map(JSON.stringify)
     .intersperse('\n')
     .pipe(fs.createWriteStream(path.join(dirs.current, 'lines.ndjson')))
-    .on('finish', callback)
+    .on('finish', () => {
+      callback()
+    })
 }
 
 function makeId (line) {
@@ -224,25 +265,19 @@ function transform (config, dirs, tools, callback) {
       return line
     })
     // TODO: log if filtered
-    .filter((line) => line.parsed && line.parsed.location && line.parsed.location.length)
-    .filter((line) => line.parsed && line.parsed.subject && line.parsed.subject.length)
+    .filter((line) => line.parsed && line.parsed.addresses && line.parsed.addresses.length)
+    .filter((line) => line.parsed && line.parsed.subjects && line.parsed.subjects.length)
     .map((line) => {
       const logs = []
 
-      const primarySubject = line.parsed.subject
-        .filter((subject) => subject.type === 'primary')[0]
+      const primarySubject = line.parsed.subjects[0]
 
       if (!primarySubject) {
         // TODO: log!
         return
       }
 
-      const addresses = line.parsed.location
-
-      if (!addresses || !addresses.length) {
-        // TODO: log!
-        return
-      }
+      const addresses = line.parsed.addresses
 
       // // TODO: something with otherSubjects
       // const otherSubjects = line.parsed.subject
@@ -254,7 +289,7 @@ function transform (config, dirs, tools, callback) {
           obj: {
             id: makeId(line),
             type: 'st:Person',
-            name: primarySubject.value,
+            name: primarySubject,
             validSince: Array.isArray(line.year) ? line.year[0] : line.year,
             validUntil: Array.isArray(line.year) ? line.year[1] : line.year,
             data: {
@@ -262,8 +297,8 @@ function transform (config, dirs, tools, callback) {
               pageNum: line.pageNum,
               bbox: line.bbox,
               text: line.text,
-              occupation: primarySubject.occupation,
-              addresses
+              occupation: line.parsed.occupations && line.parsed.occupations[0],
+              addresses: addresses.map((address) => address[0])
             }
           }
         },
