@@ -3,6 +3,70 @@
   "title": "NYC City Directories",
   "license": "CC0",
   "description": "City Directories",
-  "author": "Bert Spaan",
-  "website": "https://github.com/nypl-spacetime/city-directories"
+  "homepage": "https://github.com/nypl-spacetime/city-directories",
+  "sources": [
+    {
+      "title": "Digitized New York city directories",
+      "path": "https://digitalcollections.nypl.org/collections/new-york-city-directories#/?tab=about"
+    }
+  ],
+  "contributors": [
+    {
+      "title": "Bert Spaan",
+      "role": "editor"
+    },
+    {
+      "title": "Nicholas Wolf",
+      "role": "editor"
+    },
+    {
+      "title": "Stephen Balogh",
+      "role": "editor"
+    }
+  ],
+  "fields": {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "uuid",
+      "pageNum",
+      "bbox",
+      "text"
+    ],
+    "properties": {
+      "uuid": {
+        "type": "string",
+        "description": "NYPL Digital Collections UUID of page"
+      },
+      "pageNum": {
+        "type": "integer",
+        "description": "Page number"
+      },
+      "bbox": {
+        "type": "array",
+        "description": "Position of detected line in pixel in original scanned page",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "integer"
+        }
+      },
+      "text": {
+        "type": "string",
+        "description": "Original text from OCR software"
+      },
+      "occupation": {
+        "type": "string",
+        "description": "Occupation of person"
+      },
+      "addresses": {
+        "type": "array",
+        "description": "List of addresses",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  }
 }
