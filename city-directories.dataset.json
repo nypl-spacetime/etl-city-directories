@@ -24,6 +24,10 @@
       "role": "editor"
     }
   ],
+  "dependsOn": [
+    "nyc-streets.transform",
+    "addresses.transform"
+  ],
   "fields": {
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
@@ -60,9 +64,19 @@
         "type": "string",
         "description": "Occupation of person"
       },
-      "addresses": {
+      "locations": {
         "type": "array",
         "description": "List of addresses",
+        "items": {
+          "type": "object",
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "addressIds": {
+        "type": "array",
+        "description": "Address IDs of geocoded locations",
         "items": {
           "type": "string"
         }

@@ -7,6 +7,7 @@ const cheerio = require('cheerio')
 const tar = require('tar-stream')
 const gunzip = require('gunzip-maybe')
 
+const Geocoder = require('@spacetime/nyc-historical-geocoder')
 const detectColumns = require('hocr-detect-columns')
 const EntryParser = require('./entry-parser')
 
@@ -154,6 +155,14 @@ function download (config, dirs, tools, callback) {
     })
 }
 
+function getMinYear (year) {
+  return Array.isArray(year) ? year[0] : year
+}
+
+function getMaxYear (year) {
+  return Array.isArray(year) ? year[1] : year
+}
+
 function parse (config, dirs, tools, callback) {
   // Path of city-directory-entry-parser
   const parserPath = config.parser && config.parser.path
@@ -166,6 +175,9 @@ function parse (config, dirs, tools, callback) {
     return
   }
 
+  const minYear = config.minYear
+  const maxYear = config.maxYear
+
   let count = 1
   const countsPerYear = {}
 
@@ -177,6 +189,11 @@ function parse (config, dirs, tools, callback) {
     .sequence()
     .errors((err) => {
       console.error(err)
+    })
+    .filter((page) => {
+      const notTooOld = minYear ? getMinYear(page.directory.year) >= minYear : true
+      const notTooYoung = maxYear ? getMaxYear(page.directory.year) <= maxYear : true
+      return notTooOld && notTooYoung
     })
     .filter((page) => page.pageNum >= page.directory.startPage && page.pageNum <= page.directory.endPage)
     .map((page) => {
@@ -237,9 +254,7 @@ function parse (config, dirs, tools, callback) {
     .map(JSON.stringify)
     .intersperse('\n')
     .pipe(fs.createWriteStream(path.join(dirs.current, 'lines.ndjson')))
-    .on('finish', () => {
-      callback()
-    })
+    .on('finish', callback)
 }
 
 function makeId (line) {
@@ -247,6 +262,72 @@ function makeId (line) {
   const bboxPart = line.bbox.join('-')
 
   return `${yearPart}.${line.pageNum}.${bboxPart}`
+}
+
+function geocode (config, dirs, tools, callback) {
+  // Initialize geocoder
+  const geocoderConfig = {
+    datasetDir: dirs.getDir(null, 'transform')
+  }
+
+  Geocoder(geocoderConfig)
+    .then((geocoder) => {
+      let count = 1
+
+      H(fs.createReadStream(path.join(dirs.previous, 'lines.ndjson')))
+        .split()
+        .compact()
+        .map(JSON.parse)
+        .map((line) => {
+          if (count % LOG_EVERY_LINE === 0) {
+            console.log(`      Geocoded ${count} lines`)
+          }
+
+          const addresses = line.parsed.locations
+            .map((location) => location.value)
+
+          const geocoded = addresses
+            .map((address) => {
+              try {
+                const result = geocoder(address)
+
+                return {
+                  found: true,
+                  result
+                }
+              } catch (err) {
+                return {
+                  found: false,
+                  error: err.message
+                }
+              }
+            })
+
+          count += 1
+
+          return Object.assign(line, {
+            geocoded
+          })
+        })
+        .map(JSON.stringify)
+        .intersperse('\n')
+        .pipe(fs.createWriteStream(path.join(dirs.current, 'lines.ndjson')))
+        .on('finish', callback)
+    })
+    .catch(callback)
+}
+
+function makeMultiPoint (geometries) {
+  if (geometries && geometries.length) {
+    if (geometries.length === 1) {
+      return geometries[0]
+    } else {
+      return {
+        type: 'MultiPoint',
+        coordinates: geometries.map((geometry) => geometry.coordinates)
+      }
+    }
+  }
 }
 
 function transform (config, dirs, tools, callback) {
@@ -265,11 +346,13 @@ function transform (config, dirs, tools, callback) {
       return line
     })
     // TODO: log if filtered
-    .filter((line) => line.parsed && line.parsed.addresses && line.parsed.addresses.length)
+    .filter((line) => line.parsed && line.parsed.locations && line.parsed.locations.length)
     .filter((line) => line.parsed && line.parsed.subjects && line.parsed.subjects.length)
     .map((line) => {
       const logs = []
+      const relations = []
 
+      // TODO: also use other subjects
       const primarySubject = line.parsed.subjects[0]
 
       if (!primarySubject) {
@@ -277,17 +360,34 @@ function transform (config, dirs, tools, callback) {
         return
       }
 
-      const addresses = line.parsed.addresses
+      const id = makeId(line)
 
-      // // TODO: something with otherSubjects
-      // const otherSubjects = line.parsed.subject
-      //   .filter((subject) => subject.type !== 'primary')
+      const geometries = []
+      const addressIds = []
+
+      line.geocoded.forEach((geocode) => {
+        if (geocode.found) {
+          const addressId = geocode.result.properties.address.id
+
+          geometries.push(geocode.result.geometry)
+          addressIds.push(addressId)
+          relations.push({
+            from: id,
+            to: addressId,
+            type: 'st:in'
+          })
+        } else {
+          logs.push({
+            error: geocode.error
+          })
+        }
+      })
 
       return [
         {
           type: 'object',
           obj: {
-            id: makeId(line),
+            id,
             type: 'st:Person',
             name: primarySubject,
             validSince: Array.isArray(line.year) ? line.year[0] : line.year,
@@ -298,22 +398,27 @@ function transform (config, dirs, tools, callback) {
               bbox: line.bbox,
               text: line.text,
               occupation: line.parsed.occupations && line.parsed.occupations[0],
-              addresses: addresses.map((address) => address[0])
-            }
+              locations: line.parsed.locations,
+              addressIds: addressIds.length ? addressIds : undefined
+            },
+            geometry: makeMultiPoint(geometries)
           }
         },
         ...logs.map((log) => ({
           type: 'log',
           obj: {
-            // line
-            // uud
-            // error
+            id,
+            ...log
           }
+        })),
+        ...relations.map((relation) => ({
+          type: 'relation',
+          obj: relation
         }))
       ]
     })
-    .compact()
     .flatten()
+    .compact()
     .map(H.curry(tools.writer.writeObject))
     .nfcall([])
     .series()
@@ -326,5 +431,6 @@ function transform (config, dirs, tools, callback) {
 module.exports.steps = [
   download,
   parse,
+  geocode,
   transform
 ]
