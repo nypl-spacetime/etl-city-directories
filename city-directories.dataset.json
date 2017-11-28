@@ -13,22 +13,22 @@
   "contributors": [
     {
       "title": "Bert Spaan",
-      "role": "editor"
+      "role": "wrangler"
     },
     {
       "title": "Nicholas Wolf",
-      "role": "editor"
+      "role": "wrangler"
     },
     {
       "title": "Stephen Balogh",
-      "role": "editor"
+      "role": "wrangler"
     }
   ],
   "dependsOn": [
     "nyc-streets.transform",
     "addresses.transform"
   ],
-  "fields": {
+  "schema": {
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
     "additionalProperties": false,
