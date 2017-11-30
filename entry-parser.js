@@ -33,51 +33,57 @@ function EntryParser (config) {
   this.buff = ''
   this.objectQueue = []
 
-  this.python = spawn('python3', [parserFilename, '--training', parserTraining])
-  this.python.stdin.setEncoding('utf-8')
+  const python = spawn('python3', [parserFilename, '--training', parserTraining])
+  python.stdin.setEncoding('utf-8')
+  this._python = python
 
   this.pushParsed = function (parsed) {
     const obj = this.objectQueue[0]
     this.objectQueue = this.objectQueue.slice(1)
-    this.push({
-      ...obj,
-      parsed
-    })
+
+    if (this.writable) {
+      this.push({
+        ...obj,
+        parsed
+      })
+    }
   }
 
-  this.python.stdout.on('data', (data) => {
-    const lines = (this.buff + data.toString()).split('\n')
+  python.stdout.on('readable', () => {
+    let data
+    while ((data = python.stdout.read()) !== null) {
+      const lines = (this.buff + data.toString()).split('\n')
 
-    lines.forEach((line, index) => {
-      if (index === lines.length - 1) {
-        this.buff = line
-      } else {
-        this.pushParsed(JSON.parse(line))
-      }
-    })
-  })
-
-  this.python.stdout.on('end', () => {
-    if (this.buff.length) {
-      this.pushParsed(JSON.parse(this.buff))
+      lines.forEach((line, index) => {
+        if (index === lines.length - 1) {
+          this.buff = line
+        } else {
+          this.pushParsed(JSON.parse(line))
+        }
+      })
     }
   })
+
+  python.on('close', () => this.emit('close'))
 
   Transform.call(this, {
     objectMode: true
   })
 }
+
 util.inherits(EntryParser, Transform)
 
-EntryParser.prototype._transform = function (obj, enc, callback) {
-  this.objectQueue.push(obj)
-  this.python.stdin.write(`${obj.text}\n`)
-  callback()
+EntryParser.prototype._transform = function (obj, encoding, callback) {
+  if (this._python && this._python.stdin && this._python.stdin.writable) {
+    this._python.stdin.write(`${obj.text}\n`, encoding, callback)
+  } else {
+    return callback(new Error('Unable to parse, cannot write data to Python module'))
+  }
 }
 
 EntryParser.prototype._flush = function (callback) {
-  this.python.stdin.end()
-  callback()
+  this._python.stdin.end(callback)
+  this._python = null
 }
 
 module.exports = EntryParser

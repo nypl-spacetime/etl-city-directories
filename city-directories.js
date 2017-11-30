@@ -184,17 +184,15 @@ function parse (config, dirs, tools, callback) {
   const directories = require(path.join(dirs.download, 'directories.json'))
 
   H(directories)
+    .filter((directory) => {
+      const notTooOld = minYear ? getMinYear(directory.year) >= minYear : true
+      const notTooYoung = maxYear ? getMaxYear(directory.year) <= maxYear : true
+      return notTooOld && notTooYoung
+    })
     .filter((directory) => fs.existsSync(path.join(dirs.download, getFilename(directory.uuid))))
     .map(R.curry(readCityDirectory)(dirs.download))
     .sequence()
-    .errors((err) => {
-      console.error(err)
-    })
-    .filter((page) => {
-      const notTooOld = minYear ? getMinYear(page.directory.year) >= minYear : true
-      const notTooYoung = maxYear ? getMaxYear(page.directory.year) <= maxYear : true
-      return notTooOld && notTooYoung
-    })
+    .stopOnError(callback)
     .filter((page) => page.pageNum >= page.directory.startPage && page.pageNum <= page.directory.endPage)
     .map((page) => {
       const year = page.directory.year
@@ -244,13 +242,12 @@ function parse (config, dirs, tools, callback) {
         }))
     })
     .flatten()
+    .compact()
     .through(EntryParser({
       path: parserPath,
       training: parserTraining
     }))
-    .errors((err) => {
-      console.error(err)
-    })
+    .stopOnError(callback)
     .map(JSON.stringify)
     .intersperse('\n')
     .pipe(fs.createWriteStream(path.join(dirs.current, 'lines.ndjson')))
