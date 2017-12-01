@@ -333,6 +333,7 @@ function makeMultiPoint (geometries) {
 
 function transform (config, dirs, tools, callback) {
   let count = 1
+  let loggedIncorrectLines = 0
 
   H(fs.createReadStream(path.join(dirs.previous, 'lines.ndjson')))
     .split()
@@ -363,6 +364,11 @@ function transform (config, dirs, tools, callback) {
 
       const id = makeId(line)
       if (!id) {
+        loggedIncorrectLines += 1
+        if (loggedIncorrectLines < 5000) {
+          console.log(line)
+        }
+
         // TODO: log!
         return
       }
