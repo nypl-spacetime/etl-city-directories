@@ -255,6 +255,10 @@ function parse (config, dirs, tools, callback) {
 }
 
 function makeId (line) {
+  if (!line.year || !line.bbox || !line.bbox.length || !line.pageNum) {
+    return
+  }
+
   const yearPart = Array.isArray(line.year) ? line.year.join('-') : line.year
   const bboxPart = line.bbox.join('-')
 
@@ -358,6 +362,10 @@ function transform (config, dirs, tools, callback) {
       }
 
       const id = makeId(line)
+      if (!id) {
+        // TODO: log!
+        return
+      }
 
       const geometries = []
       const addressIds = []
