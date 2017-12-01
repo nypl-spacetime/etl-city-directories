@@ -74,6 +74,8 @@ function EntryParser (config) {
 util.inherits(EntryParser, Transform)
 
 EntryParser.prototype._transform = function (obj, encoding, callback) {
+  this.objectQueue.push(obj)
+
   if (this._python && this._python.stdin && this._python.stdin.writable) {
     this._python.stdin.write(`${obj.text}\n`, encoding, callback)
   } else {
