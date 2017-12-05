@@ -28,6 +28,19 @@
     "nyc-streets.transform",
     "addresses.transform"
   ],
+  "flattenPaths": [
+    "$.data.uuid",
+    "$.data.pageNum",
+    "$.data.bbox",
+    "$.data.text",
+    "$.data.occupation",
+    "$.data.locations",
+    "$.data.locations[0].value",
+    "$.data.locations[1].value",
+    "$.data.addressIds",
+    "$.data.addressIds[0]",
+    "$.data.addressIds[1]"
+  ],
   "schema": {
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",

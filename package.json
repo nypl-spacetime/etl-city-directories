@@ -1,6 +1,6 @@
 {
   "name": "spacetime-etl-city-directories",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Converts City Directory OCR data to NYC Space/Time Directory data",
   "main": "city-directories.js",
   "devDependencies": {
@@ -18,13 +18,13 @@
   "author": "Bert Spaan",
   "license": "MIT",
   "dependencies": {
+    "@spacetime/nyc-historical-geocoder": "github:nypl-spacetime/nyc-historical-geocoder",
     "cheerio": "^1.0.0-rc.2",
-    "got": "^7.1.0",
+    "got": "^8.0.1",
     "gunzip-maybe": "^1.4.1",
     "highland": "^2.11.1",
     "hocr-detect-columns": "github:nypl-spacetime/hocr-detect-columns",
-    "@spacetime/nyc-historical-geocoder": "github:nypl-spacetime/nyc-historical-geocoder",
     "ramda": "^0.25.0",
-    "tar-stream": "^1.5.4"
+    "tar-stream": "^1.5.5"
   }
 }
