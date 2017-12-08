@@ -103,11 +103,36 @@ The dataset created by this ETL module’s `transform` step can be found in the 
         ]
       }
     },
-    "addressIds": {
+    "geocoded": {
       "type": "array",
-      "description": "Address IDs of geocoded locations",
+      "description": "Geocoded addresses",
       "items": {
-        "type": "string"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "street",
+          "streetId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID of geocoded address"
+          },
+          "name": {
+            "type": "string",
+            "description": "Full geocoded address"
+          },
+          "street": {
+            "type": "string",
+            "description": "Street name of geocoded address"
+          },
+          "streetId": {
+            "type": "string",
+            "description": "Street ID of geocoded address"
+          }
+        }
       }
     }
   }
