@@ -37,9 +37,11 @@
     "$.data.locations",
     "$.data.locations[0].value",
     "$.data.locations[1].value",
-    "$.data.addressIds",
-    "$.data.addressIds[0]",
-    "$.data.addressIds[1]"
+    "$.data.geocoded",
+    "$.data.geocoded[0].id",
+    "$.data.geocoded[0].streetId",
+    "$.data.geocoded[1].id",
+    "$.data.geocoded[1].streetId"
   ],
   "schema": {
     "$schema": "http://json-schema.org/draft-04/schema#",
@@ -87,11 +89,36 @@
           ]
         }
       },
-      "addressIds": {
+      "geocoded": {
         "type": "array",
-        "description": "Address IDs of geocoded locations",
+        "description": "Geocoded addresses",
         "items": {
-          "type": "string"
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "street",
+            "streetId"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "ID of geocoded address"
+            },
+            "name": {
+              "type": "string",
+              "description": "Full geocoded address"
+            },
+            "street": {
+              "type": "string",
+              "description": "Street name of geocoded address"
+            },
+            "streetId": {
+              "type": "string",
+              "description": "Street ID of geocoded address"
+            }
+          }
         }
       }
     }

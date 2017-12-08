@@ -346,47 +346,61 @@ function transform (config, dirs, tools, callback) {
       count += 1
       return line
     })
-    // TODO: log if filtered
-    .filter((line) => line.parsed && line.parsed.locations && line.parsed.locations.length)
-    .filter((line) => line.parsed && line.parsed.subjects && line.parsed.subjects.length)
+
     .map((line) => {
+      const id = makeId(line)
+      if (!id) {
+        return {
+          type: 'log',
+          obj: {
+            error: 'Coult not create ID',
+            line
+          }
+        }
+      }
+
+      let name
+      let occupation
+      let locations
+
       const logs = []
       const relations = []
 
-      // TODO: also use other subjects
-      const primarySubject = line.parsed.subjects[0]
-
-      if (!primarySubject) {
-        // TODO: log!
-        return
-      }
-
-      const id = makeId(line)
-      if (!id) {
-        // TODO: throw error, exit, log!
-        return
-      }
-
       const geometries = []
-      const addressIds = []
+      const addresses = []
 
-      line.geocoded.forEach((geocode) => {
-        if (geocode.found) {
-          const addressId = geocode.result.properties.address.id
+      if (line.parsed) {
+        name = line.parsed.subjects && line.parsed.subjects[0]
+        occupation = line.parsed.occupations && line.parsed.occupations[0]
+        locations = line.parsed.locations
 
-          geometries.push(geocode.result.geometry)
-          addressIds.push(addressId)
-          relations.push({
-            from: id,
-            to: addressId,
-            type: 'st:in'
-          })
-        } else {
-          logs.push({
-            error: geocode.error
+        if (line.geocoded) {
+          line.geocoded.forEach((geocode) => {
+            if (geocode.found) {
+              const addressId = geocode.result.properties.address.id
+
+              addresses.push({
+                id: addressId,
+                name: geocode.result.properties.address.name,
+                street: geocode.result.properties.street.name,
+                streetId: geocode.result.properties.street.id
+              })
+
+              geometries.push(geocode.result.geometry)
+
+              relations.push({
+                from: id,
+                to: addressId,
+                type: 'st:in'
+              })
+            } else {
+              logs.push({
+                error: geocode.error
+              })
+            }
           })
         }
-      })
+      }
 
       return [
         {
@@ -394,7 +408,7 @@ function transform (config, dirs, tools, callback) {
           obj: {
             id,
             type: 'st:Person',
-            name: primarySubject,
+            name,
             validSince: Array.isArray(line.year) ? line.year[0] : line.year,
             validUntil: Array.isArray(line.year) ? line.year[1] : line.year,
             data: {
@@ -402,9 +416,9 @@ function transform (config, dirs, tools, callback) {
               pageNum: line.pageNum,
               bbox: line.bbox,
               text: line.text,
-              occupation: line.parsed.occupations && line.parsed.occupations[0],
-              locations: line.parsed.locations,
-              addressIds: addressIds.length ? addressIds : undefined
+              occupation,
+              locations,
+              geocoded: addresses
             },
             geometry: makeMultiPoint(geometries)
           }
