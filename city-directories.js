@@ -52,6 +52,10 @@ function readCityDirectory (baseDir, directory) {
       })
   })
 
+  extract.on('error', (err) => {
+    throw err
+  })
+
   extract.on('finish', () => {
     pagesStream.end()
   })
