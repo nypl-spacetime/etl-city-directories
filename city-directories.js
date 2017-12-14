@@ -416,7 +416,8 @@ function transform (config, dirs, tools, callback) {
             validSince: Array.isArray(line.year) ? line.year[0] : line.year,
             validUntil: Array.isArray(line.year) ? line.year[1] : line.year,
             data: {
-              uuid: line.uuid,
+              volumeUuid: line.uuid,
+              pageUuid: line.pageUuid,
               pageNum: line.pageNum,
               bbox: line.bbox,
               text: line.text,

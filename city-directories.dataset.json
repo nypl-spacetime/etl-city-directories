@@ -29,7 +29,8 @@
     "addresses.transform"
   ],
   "flattenPaths": [
-    "$.data.uuid",
+    "$.data.volumeUuid",
+    "$.data.pageUuid",
     "$.data.pageNum",
     "$.data.bbox",
     "$.data.text",
@@ -48,13 +49,18 @@
     "type": "object",
     "additionalProperties": false,
     "required": [
-      "uuid",
+      "volumeUuid",
+      "pageUuid",
       "pageNum",
       "bbox",
       "text"
     ],
     "properties": {
-      "uuid": {
+      "volumeUuid": {
+        "type": "string",
+        "description": "NYPL Digital Collections UUID of City Directory"
+      },
+      "pageUuid": {
         "type": "string",
         "description": "NYPL Digital Collections UUID of page"
       },

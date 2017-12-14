@@ -62,13 +62,18 @@ The dataset created by this ETL module’s `transform` step can be found in the 
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "uuid",
+    "volumeUuid",
+    "pageUuid",
     "pageNum",
     "bbox",
     "text"
   ],
   "properties": {
-    "uuid": {
+    "volumeUuid": {
+      "type": "string",
+      "description": "NYPL Digital Collections UUID of City Directory"
+    },
+    "pageUuid": {
       "type": "string",
       "description": "NYPL Digital Collections UUID of page"
     },
